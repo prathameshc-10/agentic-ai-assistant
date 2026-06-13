@@ -4,6 +4,7 @@ from app.db.database import get_db
 from app.db.models import Session, Message
 from app.agents.orchestrator import run_orchestrator
 from pydantic import BaseModel
+from app.agents.rag_agent import build_vector_store
 import uuid, shutil, os
 
 router  = APIRouter()
@@ -58,7 +59,11 @@ async def upload_document(file: UploadFile = File(...)):
     file_path = f"uploads/{file.filename}"
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    return {"message": f"'{file.filename}' uploaded. You can now ask questions about it."}
+
+    # Rebuild vector store to include the new document
+    build_vector_store()
+
+    return {"message": f"'{file.filename}' uploaded and indexed. You can now ask questions about it."}
 
 # --- Get chat history ---
 @router.get("/history/{session_id}")
