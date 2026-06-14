@@ -5,15 +5,20 @@ import { Logo } from "./Logo";
 type SidebarProps = {
   sessions: ChatSession[];
   activeSessionId: string;
+  onNewChat: () => void;
   onSelectSession: (id: string) => void;
 };
 
-export function Sidebar({ sessions, activeSessionId, onSelectSession }: SidebarProps) {
+export function Sidebar({ sessions, activeSessionId, onNewChat, onSelectSession }: SidebarProps) {
   return (
     <aside className="glass-panel flex h-full w-[260px] shrink-0 flex-col p-6 max-lg:hidden">
       <Logo />
 
-      <button className="mt-8 h-11 rounded-full bg-violet-gradient text-sm font-semibold text-white shadow-violet transition hover:scale-[1.01]">
+      <button
+        className="mt-8 h-11 rounded-full bg-violet-gradient text-sm font-semibold text-white shadow-violet transition hover:scale-[1.01]"
+        onClick={onNewChat}
+        type="button"
+      >
         New Chat
       </button>
 
@@ -22,6 +27,11 @@ export function Sidebar({ sessions, activeSessionId, onSelectSession }: SidebarP
           Recent chats
         </p>
         <nav className="space-y-2">
+          {sessions.length === 0 ? (
+            <p className="rounded-xl border border-white/10 bg-white/[0.025] px-3 py-4 text-sm text-slate-500">
+              No recent chats yet.
+            </p>
+          ) : null}
           {sessions.map((session) => {
             const active = session.id === activeSessionId;
 

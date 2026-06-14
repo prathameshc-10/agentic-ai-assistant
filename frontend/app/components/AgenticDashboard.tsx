@@ -1,16 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+/* eslint-disable react-hooks/set-state-in-effect */
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   agentLabels,
-  agentStats,
-  documents,
   features,
-  sessions,
   suggestions,
 } from "../data/agentic-ui";
-import { getSessionHistory, sendChatMessage, uploadDocument } from "../lib/api";
-import type { AgentKind, AgentStat, ChatMessage as ChatMessageType, UploadedDocument } from "../types/agentic-ui";
+import {
+  createChatSession,
+  getChatSessions,
+  getDocuments,
+  getSessionHistory,
+  sendChatMessage,
+  uploadDocument,
+} from "../lib/api";
+import type {
+  AgentKind,
+  AgentStat,
+  BackendDocument,
+  BackendSession,
+  ChatMessage as ChatMessageType,
+  ChatSession,
+  UploadedDocument,
+} from "../types/agentic-ui";
 import { AgentBadge } from "./AgentBadge";
 import { ChatInput } from "./ChatInput";
 import { ChatMessage } from "./ChatMessage";
@@ -23,16 +37,20 @@ import { Sidebar } from "./Sidebar";
 
 export function AgenticDashboard() {
   const [showLanding, setShowLanding] = useState(true);
-  const [activeSessionId, setActiveSessionId] = useState(sessions[0].id);
   const [backendSessionId, setBackendSessionId] = useState<string | null>(() =>
     typeof window === "undefined" ? null : window.localStorage.getItem("agentic_session_id"),
   );
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : window.localStorage.getItem("agentic_session_id"),
+  );
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessageType[]>([]);
-  const [uploadedDocuments, setUploadedDocuments] = useState<UploadedDocument[]>(documents);
+  const [uploadedDocuments, setUploadedDocuments] = useState<UploadedDocument[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(() =>
     typeof window === "undefined" ? false : Boolean(window.localStorage.getItem("agentic_session_id")),
   );
+  const [isSessionsLoading, setIsSessionsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,18 +58,64 @@ export function AgenticDashboard() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
 
-  const activeSession = useMemo(
-    () => sessions.find((session) => session.id === activeSessionId) ?? sessions[0],
-    [activeSessionId],
+  const activeSession = useMemo(() => {
+    return (
+      chatSessions.find((session) => session.id === activeSessionId) ?? {
+        id: backendSessionId ?? "new",
+        title: "New chat",
+        date: "Now",
+        agent: "chat" as AgentKind,
+        agentCounts: { chat: 0, code: 0, rag: 0, search: 0 },
+        messageCount: 0,
+      }
+    );
+  }, [activeSessionId, backendSessionId, chatSessions]);
+
+  const liveAgentStats = useMemo(
+    () => buildAgentStats(chatMessages, activeSession.agentCounts),
+    [activeSession.agentCounts, chatMessages],
   );
 
-  const liveAgentStats = useMemo(() => buildAgentStats(chatMessages), [chatMessages]);
+  const refreshDocuments = useCallback(async () => {
+    try {
+      const response = await getDocuments();
+      setUploadedDocuments(response.map(mapBackendDocument));
+    } catch {
+      setUploadedDocuments([]);
+    }
+  }, []);
+
+  const refreshSessions = useCallback(async () => {
+    setIsSessionsLoading(true);
+
+    try {
+      const response = await getChatSessions();
+      const mappedSessions = response.map(mapBackendSession);
+      setChatSessions(mappedSessions);
+
+      if (!backendSessionId && mappedSessions[0]) {
+        setBackendSessionId(mappedSessions[0].id);
+        setActiveSessionId(mappedSessions[0].id);
+        window.localStorage.setItem("agentic_session_id", mappedSessions[0].id);
+      }
+    } catch (sessionsError: unknown) {
+      setError(sessionsError instanceof Error ? sessionsError.message : "Could not load sessions.");
+    } finally {
+      setIsSessionsLoading(false);
+    }
+  }, [backendSessionId]);
+
+  useEffect(() => {
+    void refreshSessions();
+    void refreshDocuments();
+  }, [refreshDocuments, refreshSessions]);
 
   useEffect(() => {
     if (!backendSessionId) {
       return;
     }
 
+    setIsHistoryLoading(true);
     getSessionHistory(backendSessionId)
       .then((history) => {
         setChatMessages(
@@ -73,6 +137,31 @@ export function AgenticDashboard() {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [chatMessages, isSending]);
 
+  async function handleNewChat() {
+    setError(null);
+    setChatMessages([]);
+    setIsHistoryLoading(true);
+
+    try {
+      const response = await createChatSession();
+      setBackendSessionId(response.session_id);
+      setActiveSessionId(response.session_id);
+      window.localStorage.setItem("agentic_session_id", response.session_id);
+      await refreshSessions();
+    } catch (newChatError: unknown) {
+      setError(newChatError instanceof Error ? newChatError.message : "Could not create a new chat.");
+    } finally {
+      setIsHistoryLoading(false);
+    }
+  }
+
+  function handleSelectSession(sessionId: string) {
+    setError(null);
+    setActiveSessionId(sessionId);
+    setBackendSessionId(sessionId);
+    window.localStorage.setItem("agentic_session_id", sessionId);
+  }
+
   async function handleSendMessage(message: string) {
     const userMessage: ChatMessageType = {
       author: "user",
@@ -91,8 +180,8 @@ export function AgenticDashboard() {
       });
 
       setBackendSessionId(response.session_id);
+      setActiveSessionId(response.session_id);
       window.localStorage.setItem("agentic_session_id", response.session_id);
-      setActiveSessionId("rag-pipeline");
       setChatMessages((current) => [
         ...current,
         {
@@ -102,6 +191,7 @@ export function AgenticDashboard() {
           id: `assistant-${Date.now()}`,
         },
       ]);
+      await refreshSessions();
     } catch (sendError: unknown) {
       const messageText =
         sendError instanceof Error ? sendError.message : "Could not reach the backend server.";
@@ -138,6 +228,7 @@ export function AgenticDashboard() {
     try {
       const response = await uploadDocument(file);
       setUploadStatus(response.message);
+      await refreshDocuments();
       setUploadedDocuments((current) =>
         current.map((document) =>
           document.id === pendingDocument.id
@@ -169,9 +260,10 @@ export function AgenticDashboard() {
 
       <div className="relative mx-auto flex h-[calc(100vh-2rem)] max-w-[1480px] gap-5">
         <Sidebar
-          activeSessionId={activeSessionId}
-          onSelectSession={setActiveSessionId}
-          sessions={sessions}
+          activeSessionId={activeSessionId ?? ""}
+          onNewChat={() => void handleNewChat()}
+          onSelectSession={handleSelectSession}
+          sessions={chatSessions}
         />
 
         <section className="flex min-w-0 flex-1 flex-col gap-5">
@@ -216,7 +308,9 @@ export function AgenticDashboard() {
                     {error}
                   </div>
                 ) : null}
-                {isHistoryLoading ? <ThinkingState label="Loading history" /> : null}
+                {isSessionsLoading || isHistoryLoading ? (
+                  <ThinkingState label={isSessionsLoading ? "Loading sessions" : "Loading history"} />
+                ) : null}
                 {!isHistoryLoading && chatMessages.length === 0 ? (
                   <EmptyPrompt onSuggestionClick={(label) => void handleSendMessage(label)} />
                 ) : null}
@@ -255,11 +349,12 @@ export function AgenticDashboard() {
       </button>
 
       <MobileDrawer
-        activeSessionId={activeSessionId}
+        activeSessionId={activeSessionId ?? ""}
         onClose={() => setDrawerOpen(false)}
-        onSelectSession={setActiveSessionId}
+        onNewChat={() => void handleNewChat()}
+        onSelectSession={handleSelectSession}
         open={drawerOpen}
-        sessions={sessions}
+        sessions={chatSessions}
       />
       <RoutingOverlay open={routingOpen} onClose={() => setRoutingOpen(false)} />
     </main>
@@ -307,7 +402,10 @@ function ThinkingState({ label = "Thinking" }: { label?: string }) {
   );
 }
 
-function buildAgentStats(messages: ChatMessageType[]): AgentStat[] {
+function buildAgentStats(
+  messages: ChatMessageType[],
+  sessionCounts?: Record<AgentKind, number>,
+): AgentStat[] {
   const counts = messages.reduce<Record<AgentKind, number>>(
     (accumulator, message) => {
       if (message.agent) {
@@ -326,11 +424,59 @@ function buildAgentStats(messages: ChatMessageType[]): AgentStat[] {
     search: "Search",
   };
 
-  return agentStats.map((fallback) => ({
-    agent: fallback.agent,
-    count: counts[fallback.agent] || fallback.count,
-    label: labels[fallback.agent],
+  return (Object.keys(labels) as AgentKind[]).map((agent) => ({
+    agent,
+    count: counts[agent] || sessionCounts?.[agent] || 0,
+    label: labels[agent],
   }));
+}
+
+function mapBackendSession(session: BackendSession): ChatSession {
+  return {
+    id: session.session_id,
+    title: session.title || "New chat",
+    date: formatSessionDate(session.updated_at ?? session.created_at),
+    agent: getDominantAgent(session.agent_counts),
+    agentCounts: session.agent_counts,
+    messageCount: session.message_count,
+  };
+}
+
+function mapBackendDocument(document: BackendDocument): UploadedDocument {
+  return {
+    id: document.name,
+    name: document.name,
+    size: formatFileSize(document.size),
+    status: document.status,
+  };
+}
+
+function getDominantAgent(counts: Record<AgentKind, number>): AgentKind {
+  return (Object.entries(counts) as [AgentKind, number][]).reduce(
+    (winner, current) => (current[1] > winner[1] ? current : winner),
+    ["chat", 0],
+  )[0];
+}
+
+function formatSessionDate(value: string | null) {
+  if (!value) {
+    return "Now";
+  }
+
+  const date = new Date(value);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) {
+    return "Today";
+  }
+
+  if (date.toDateString() === yesterday.toDateString()) {
+    return "Yesterday";
+  }
+
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function formatFileSize(size: number) {

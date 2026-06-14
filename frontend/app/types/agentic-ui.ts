@@ -12,6 +12,8 @@ export type ChatSession = {
   title: string;
   date: string;
   agent: AgentKind;
+  agentCounts?: Record<AgentKind, number>;
+  messageCount?: number;
 };
 
 export type ChatMessage = {
@@ -31,6 +33,21 @@ export type UploadedDocument = {
   size: string;
   status: "indexed" | "uploading";
   progress?: number;
+};
+
+export type BackendSession = {
+  session_id: string;
+  title: string;
+  created_at: string | null;
+  updated_at: string | null;
+  message_count: number;
+  agent_counts: Record<AgentKind, number>;
+};
+
+export type BackendDocument = {
+  name: string;
+  size: number;
+  status: "indexed";
 };
 
 export type AgentStat = {

@@ -1,4 +1,4 @@
-import type { AgentKind } from "../types/agentic-ui";
+import type { AgentKind, BackendDocument, BackendSession } from "../types/agentic-ui";
 
 type ChatRequest = {
   session_id: string | null;
@@ -19,6 +19,10 @@ type HistoryItem = {
 
 type UploadResponse = {
   message: string;
+};
+
+type CreateSessionResponse = {
+  session_id: string;
 };
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -64,4 +68,24 @@ export async function getSessionHistory(sessionId: string) {
   const response = await fetch(`/api/history/${sessionId}`);
 
   return parseResponse<HistoryItem[]>(response);
+}
+
+export async function createChatSession() {
+  const response = await fetch("/api/sessions", {
+    method: "POST",
+  });
+
+  return parseResponse<CreateSessionResponse>(response);
+}
+
+export async function getChatSessions() {
+  const response = await fetch("/api/sessions");
+
+  return parseResponse<BackendSession[]>(response);
+}
+
+export async function getDocuments() {
+  const response = await fetch("/api/documents");
+
+  return parseResponse<BackendDocument[]>(response);
 }

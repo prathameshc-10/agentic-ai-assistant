@@ -6,6 +6,7 @@ type MobileDrawerProps = {
   sessions: ChatSession[];
   activeSessionId: string;
   onClose: () => void;
+  onNewChat: () => void;
   onSelectSession: (id: string) => void;
 };
 
@@ -14,6 +15,7 @@ export function MobileDrawer({
   sessions,
   activeSessionId,
   onClose,
+  onNewChat,
   onSelectSession,
 }: MobileDrawerProps) {
   return (
@@ -32,11 +34,28 @@ export function MobileDrawer({
         <div className="mx-auto h-1 w-14 rounded-full bg-white/20" />
         <div className="mt-5 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-50">Recent chats</h2>
-          <button className="rounded-full px-3 py-1 text-sm text-slate-400" onClick={onClose}>
-            Close
-          </button>
+          <div className="flex gap-2">
+            <button
+              className="rounded-full border border-violet-300/30 px-3 py-1 text-sm font-semibold text-violet-100"
+              onClick={() => {
+                onNewChat();
+                onClose();
+              }}
+              type="button"
+            >
+              New
+            </button>
+            <button className="rounded-full px-3 py-1 text-sm text-slate-400" onClick={onClose}>
+              Close
+            </button>
+          </div>
         </div>
         <div className="mt-4 space-y-2">
+          {sessions.length === 0 ? (
+            <p className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-sm text-slate-500">
+              No recent chats yet.
+            </p>
+          ) : null}
           {sessions.map((session) => {
             const active = activeSessionId === session.id;
 
