@@ -3,10 +3,19 @@ import type { AgentStat, UploadedDocument } from "../types/agentic-ui";
 
 type SessionPanelProps = {
   documents: UploadedDocument[];
+  isUploading?: boolean;
+  onUploadDocument: (file: File) => Promise<void> | void;
   stats: AgentStat[];
+  uploadStatus?: string | null;
 };
 
-export function SessionPanel({ documents, stats }: SessionPanelProps) {
+export function SessionPanel({
+  documents,
+  isUploading = false,
+  onUploadDocument,
+  stats,
+  uploadStatus,
+}: SessionPanelProps) {
   const total = stats.reduce((sum, item) => sum + item.count, 0);
 
   return (
@@ -65,11 +74,29 @@ export function SessionPanel({ documents, stats }: SessionPanelProps) {
         </div>
       </section>
 
-      <button className="mt-6 flex h-32 w-full flex-col items-center justify-center rounded-2xl border border-dashed border-violet-300/30 bg-violet-500/[0.055] text-center transition hover:bg-violet-500/10">
+      <label className="mt-6 flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-violet-300/30 bg-violet-500/[0.055] text-center transition hover:bg-violet-500/10">
+        <input
+          accept=".pdf,.txt"
+          className="hidden"
+          disabled={isUploading}
+          onChange={async (event) => {
+            const file = event.target.files?.[0];
+
+            if (file) {
+              await onUploadDocument(file);
+              event.target.value = "";
+            }
+          }}
+          type="file"
+        />
         <span className="text-2xl text-violet-200">+</span>
-        <span className="mt-2 text-sm font-semibold text-slate-100">Upload Document</span>
-        <span className="mt-1 text-xs text-slate-600">Drop PDF or TXT here</span>
-      </button>
+        <span className="mt-2 text-sm font-semibold text-slate-100">
+          {isUploading ? "Uploading..." : "Upload Document"}
+        </span>
+        <span className="mt-1 px-5 text-xs leading-5 text-slate-600">
+          {uploadStatus ?? "Drop PDF or TXT here"}
+        </span>
+      </label>
     </aside>
   );
 }
